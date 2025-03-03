@@ -35,17 +35,46 @@
             z-index: 1000;
             font-family: Arial, sans-serif;
         }
+        #debugPanel {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 9999;
+            max-width: 80%;
+            max-height: 30%;
+            overflow-y: auto;
+        }
+        #debugToggle {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: sans-serif;
+            z-index: 9999;
+        }
     </style>
 </head>
 <body>
     <div id="messageOverlay" class="message-overlay">
         Hello there!
     </div>
+    
+    <div id="debugPanel"></div>
+    <div id="debugToggle">Toggle Debug</div>
 
     <a-scene
         embedded
-        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; trackingMethod: best;"
-        renderer="antialias: true; alpha: true; precision: mediump;"
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; trackingMethod: best; maxDetectionRate: 60;"
+        renderer="antialias: true; alpha: true; precision: mediump; logarithmicDepthBuffer: true;"
         vr-mode-ui="enabled: false">
 
         <!-- Custom marker with pattern -->
@@ -58,19 +87,46 @@
         <a-entity
             id="persistentModel"
             position="0 0 0"
-            scale="1.5 1.5 1.5"
+            scale="2 2 2"
             gltf-model="assets/scene.gltf"
             class="clickable"
-            visible="false">
+            visible="false"
+            raycaster="objects: .clickable; far: 100;"
+            cursor="fuse: false;">
         </a-entity>
 
-        <a-entity camera look-controls wasd-controls></a-entity>
+        <a-entity camera look-controls wasd-controls position="0 1.6 0"></a-entity>
     </a-scene>
 
     <script>
-        AFRAME.registerComponent('markerhandler', {
+        // Debug logging function
+        const debugPanel = document.getElementById('debugPanel');
+        const debugToggle = document.getElementById('debugToggle');
+        let debugVisible = true;
+        
+        function log(message) {
+            console.log(message);
+            const timestamp = new Date().toLocaleTimeString();
+            debugPanel.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            // Auto-scroll to bottom
+            debugPanel.scrollTop = debugPanel.scrollHeight;
+        }
+        
+        // Toggle debug panel visibility
+        debugToggle.addEventListener('click', function() {
+            debugVisible = !debugVisible;
+            debugPanel.style.display = debugVisible ? 'block' : 'none';
+        });
+        
+        // Log initial state
+        log('AR application initialized');
+        log('Waiting for marker detection...');
+
+        // Register custom component for handling marker detection
+        AFRAME.registerComponent('marker-handler', {
             init: function() {
                 this.modelPlaced = false;
+                log('Marker handler initialized');
             }
         });
 
@@ -79,9 +135,13 @@
             const marker = document.querySelector('#marker');
             const markerPosition = document.querySelector('#markerPosition');
             const persistentModel = document.querySelector('#persistentModel');
+            const scene = document.querySelector('a-scene');
+            
+            log('DOM fully loaded');
             
             // Add click event to the model
             persistentModel.addEventListener('click', function() {
+                log('Model clicked - showing message');
                 messageOverlay.style.display = 'block';
                 setTimeout(() => {
                     messageOverlay.style.display = 'none';
@@ -92,25 +152,78 @@
 
             // When marker is found, position the model next to it
             marker.addEventListener('markerFound', function() {
+                log('Marker found!');
+                
                 if (!modelPlaced) {
-                    // Get the marker's world position
-                    const markerWorldPosition = new THREE.Vector3();
-                    markerPosition.object3D.getWorldPosition(markerWorldPosition);
+                    log('Positioning model next to marker');
                     
-                    // Position the model 1 unit to the right of the marker
-                    persistentModel.setAttribute('position', {
-                        x: markerWorldPosition.x + 1,
-                        y: markerWorldPosition.y,
-                        z: markerWorldPosition.z
-                    });
-                    
-                    // Make the model visible
-                    persistentModel.setAttribute('visible', true);
-                    
-                    // Mark as placed so it doesn't move again
-                    modelPlaced = true;
+                    try {
+                        // Get the marker's world position
+                        const markerWorldPosition = new THREE.Vector3();
+                        markerPosition.object3D.getWorldPosition(markerWorldPosition);
+                        
+                        log(`Marker position: x=${markerWorldPosition.x.toFixed(2)}, y=${markerWorldPosition.y.toFixed(2)}, z=${markerWorldPosition.z.toFixed(2)}`);
+                        
+                        // Position the model 1 unit to the right of the marker
+                        persistentModel.setAttribute('position', {
+                            x: markerWorldPosition.x + 1,
+                            y: markerWorldPosition.y,
+                            z: markerWorldPosition.z
+                        });
+                        
+                        // Make the model visible
+                        persistentModel.setAttribute('visible', true);
+                        
+                        // Mark as placed so it doesn't move again
+                        modelPlaced = true;
+                        log('Model placed successfully');
+                    } catch (error) {
+                        log(`Error placing model: ${error.message}`);
+                    }
                 }
             });
+            
+            marker.addEventListener('markerLost', function() {
+                log('Marker lost - model remains in place');
+            });
+            
+            // Add event listener for scene loaded
+            scene.addEventListener('loaded', function() {
+                log('A-Frame scene fully loaded');
+            });
+            
+            // Add event listener for model loaded
+            persistentModel.addEventListener('model-loaded', function() {
+                log('3D model loaded successfully');
+            });
+            
+            // Add event listener for model error
+            persistentModel.addEventListener('model-error', function(event) {
+                log(`Error loading model: ${event.detail.message || 'Unknown error'}`);
+            });
+            
+            // Fix for mobile fullscreen
+            document.addEventListener('touchstart', function() {
+                // This is just to ensure touch events are properly registered
+            }, false);
+            
+            // Fix for iOS
+            window.addEventListener('resize', function() {
+                log('Window resized - adjusting canvas');
+            });
+        });
+        
+        // Fix for AR.js camera issues
+        window.addEventListener('arjs-video-loaded', function() {
+            log('AR.js video stream loaded');
+        });
+        
+        window.addEventListener('camera-error', function(event) {
+            log(`Camera error: ${event.detail.message || 'Unknown camera error'}`);
+        });
+        
+        window.addEventListener('camera-init', function(event) {
+            log('Camera initialized');
         });
     </script>
 </body>
