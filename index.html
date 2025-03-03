@@ -260,10 +260,10 @@
                         
                         log(`Marker position: x=${markerWorldPosition.x.toFixed(2)}, y=${markerWorldPosition.y.toFixed(2)}, z=${markerWorldPosition.z.toFixed(2)}`);
                         
-                        // Create a world position for the model
+                        // Create a world position for the model - place it directly on top of the marker for visibility
                         const worldPosition = new THREE.Vector3(
-                            markerWorldPosition.x + 1,
-                            markerWorldPosition.y,
+                            markerWorldPosition.x,
+                            markerWorldPosition.y + 0.5, // Position slightly above the marker
                             markerWorldPosition.z
                         );
                         
@@ -271,7 +271,7 @@
                         window.modelWorldPosition = worldPosition;
                         window.isModelFixed = true;
                         
-                        // Position the model 1 unit to the right of the marker
+                        // Position the model directly over the marker instead of to the side
                         persistentModel.setAttribute('position', {
                             x: worldPosition.x,
                             y: worldPosition.y,
@@ -281,14 +281,31 @@
                         // Make the model visible
                         persistentModel.setAttribute('visible', true);
                         
-                        // Add to scene parent instead of marker parent to keep it fixed in world space
-                        const scene = document.querySelector('a-scene');
-                        scene.appendChild(persistentModel);
+                        // Move the model to the scene to keep it fixed
+                        if (persistentModel.parentElement !== scene) {
+                            scene.appendChild(persistentModel);
+                        }
+                        
+                        // Force an immediate position and visibility update
+                        setTimeout(() => {
+                            persistentModel.object3D.position.copy(worldPosition);
+                            persistentModel.object3D.visible = true;
+                            log('Model visibility and position forced');
+                        }, 100);
                         
                         // Mark as placed so it doesn't move again
                         modelPlaced = true;
                         log('Model placed successfully in fixed position');
                         statusIndicator.textContent = 'Model placed - fixed in position';
+                        
+                        // Log model details to debug
+                        const modelDetails = {
+                            visible: persistentModel.getAttribute('visible'),
+                            position: persistentModel.getAttribute('position'),
+                            scale: persistentModel.getAttribute('scale'),
+                            parent: persistentModel.parentElement.id || 'scene'
+                        };
+                        log(`Model details: ${JSON.stringify(modelDetails)}`);
                     } catch (error) {
                         log(`Error placing model: ${error.message}`);
                         statusIndicator.textContent = 'Error placing model';
@@ -308,16 +325,57 @@
                 statusIndicator.textContent = 'Ready - scan marker';
             });
             
-            // Add event listener for model loaded
-            persistentModel.addEventListener('model-loaded', function() {
-                log('3D model loaded successfully');
+            // Add this verification to check if the model is actually loaded
+            AFRAME.registerComponent('model-loaded-check', {
+                init: function() {
+                    // Add event listener for model loaded
+                    this.el.addEventListener('model-loaded', e => {
+                        log('3D model loaded successfully with geometry');
+                        
+                        // Check if model has geometry
+                        const mesh = this.el.getObject3D('mesh');
+                        if (mesh) {
+                            const hasGeometry = mesh.children.some(child => 
+                                child.geometry || (child.children && child.children.length > 0)
+                            );
+                            
+                            if (hasGeometry) {
+                                log('Model has valid geometry');
+                                // Try an alternative model if the original one fails
+                                if (window.modelAttempts && window.modelAttempts > 2) {
+                                    log('Trying to use a basic primitive instead');
+                                    this.el.removeAttribute('gltf-model');
+                                    this.el.setAttribute('geometry', 'primitive: box; width: 1; height: 1; depth: 1');
+                                    this.el.setAttribute('material', 'color: red');
+                                    this.el.setAttribute('visible', true);
+                                }
+                            } else {
+                                log('WARNING: Model loaded but has no geometry');
+                                window.modelAttempts = (window.modelAttempts || 0) + 1;
+                            }
+                        } else {
+                            log('WARNING: Model loaded but no mesh found');
+                            window.modelAttempts = (window.modelAttempts || 0) + 1;
+                        }
+                    });
+                    
+                    // Add event listener for model error
+                    this.el.addEventListener('model-error', event => {
+                        log(`Error loading model: ${event.detail.message || 'Unknown error'}`);
+                        statusIndicator.textContent = 'Error loading 3D model';
+                        
+                        // Fall back to a basic shape if model fails to load
+                        log('Falling back to basic shape due to model error');
+                        this.el.removeAttribute('gltf-model');
+                        this.el.setAttribute('geometry', 'primitive: box; width: 1; height: 1; depth: 1');
+                        this.el.setAttribute('material', 'color: red');
+                        this.el.setAttribute('visible', true);
+                    });
+                }
             });
             
-            // Add event listener for model error
-            persistentModel.addEventListener('model-error', function(event) {
-                log(`Error loading model: ${event.detail.message || 'Unknown error'}`);
-                statusIndicator.textContent = 'Error loading 3D model';
-            });
+            // Add the component to the model
+            document.querySelector('#persistentModel').setAttribute('model-loaded-check', '');
             
             // Fix for mobile fullscreen
             document.addEventListener('touchstart', function() {
