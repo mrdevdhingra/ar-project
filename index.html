@@ -15,6 +15,13 @@
             -webkit-user-select: none;
             user-select: none;
         }
+        .a-canvas {
+            width: 100% !important;
+            height: 100% !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+        }
         .message-overlay {
             display: none;
             position: fixed;
@@ -37,35 +44,72 @@
 
     <a-scene
         embedded
-        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix;"
-        renderer="antialias: true; alpha: true"
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; trackingMethod: best;"
+        renderer="antialias: true; alpha: true; precision: mediump;"
         vr-mode-ui="enabled: false">
 
         <!-- Custom marker with pattern -->
-        <a-marker type="pattern" url="assets/pattern.patt">
-            <!-- 3D model -->
-            <a-entity
-                position="0 1 0"
-                scale="0.5 0.5 0.5"
-                gltf-model="assets/scene.gltf"
-                class="clickable"
-                animation="property: rotation; to: 0 360 0; dur: 5000; easing: linear; loop: true">
-            </a-entity>
+        <a-marker type="pattern" url="assets/pattern.patt" emitevents="true" id="marker">
+            <!-- Empty entity to mark the position -->
+            <a-entity id="markerPosition"></a-entity>
         </a-marker>
 
-        <a-entity camera></a-entity>
+        <!-- 3D model that will be positioned in world space -->
+        <a-entity
+            id="persistentModel"
+            position="0 0 0"
+            scale="1.5 1.5 1.5"
+            gltf-model="assets/scene.gltf"
+            class="clickable"
+            visible="false">
+        </a-entity>
+
+        <a-entity camera look-controls wasd-controls></a-entity>
     </a-scene>
 
     <script>
+        AFRAME.registerComponent('markerhandler', {
+            init: function() {
+                this.modelPlaced = false;
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             const messageOverlay = document.getElementById('messageOverlay');
-            const model = document.querySelector('.clickable');
-
-            model.addEventListener('click', function() {
+            const marker = document.querySelector('#marker');
+            const markerPosition = document.querySelector('#markerPosition');
+            const persistentModel = document.querySelector('#persistentModel');
+            
+            // Add click event to the model
+            persistentModel.addEventListener('click', function() {
                 messageOverlay.style.display = 'block';
                 setTimeout(() => {
                     messageOverlay.style.display = 'none';
                 }, 2000);
+            });
+
+            let modelPlaced = false;
+
+            // When marker is found, position the model next to it
+            marker.addEventListener('markerFound', function() {
+                if (!modelPlaced) {
+                    // Get the marker's world position
+                    const markerWorldPosition = new THREE.Vector3();
+                    markerPosition.object3D.getWorldPosition(markerWorldPosition);
+                    
+                    // Position the model 1 unit to the right of the marker
+                    persistentModel.setAttribute('position', {
+                        x: markerWorldPosition.x + 1,
+                        y: markerWorldPosition.y,
+                        z: markerWorldPosition.z
+                    });
+                    
+                    // Make the model visible
+                    persistentModel.setAttribute('visible', true);
+                    
+                    // Mark as placed so it doesn't move again
+                    modelPlaced = true;
+                }
             });
         });
     </script>
