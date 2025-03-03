@@ -146,7 +146,7 @@
         <a-entity
             id="persistentModel"
             position="0 0 0"
-            scale="2 2 2"
+            scale="4 4 4"
             gltf-model="assets/scene.gltf"
             class="clickable"
             visible="false"
@@ -154,7 +154,7 @@
             cursor="fuse: false;">
         </a-entity>
 
-        <a-entity camera look-controls wasd-controls position="0 1.6 0"></a-entity>
+        <a-entity camera position="0 1.6 0"></a-entity>
     </a-scene>
 
     <script>
@@ -269,6 +269,7 @@
                         
                         // Store the world position
                         window.modelWorldPosition = worldPosition;
+                        window.isModelFixed = true;
                         
                         // Position the model 1 unit to the right of the marker
                         persistentModel.setAttribute('position', {
@@ -280,10 +281,14 @@
                         // Make the model visible
                         persistentModel.setAttribute('visible', true);
                         
+                        // Add to scene parent instead of marker parent to keep it fixed in world space
+                        const scene = document.querySelector('a-scene');
+                        scene.appendChild(persistentModel);
+                        
                         // Mark as placed so it doesn't move again
                         modelPlaced = true;
-                        log('Model placed successfully');
-                        statusIndicator.textContent = 'Model placed - you can now explore';
+                        log('Model placed successfully in fixed position');
+                        statusIndicator.textContent = 'Model placed - fixed in position';
                     } catch (error) {
                         log(`Error placing model: ${error.message}`);
                         statusIndicator.textContent = 'Error placing model';
@@ -344,6 +349,31 @@
             init: function() {
                 this.el.sceneEl.addEventListener('loaded', this.onSceneLoaded.bind(this));
                 log('AR session manager initialized');
+                
+                // Disable look controls
+                const camera = document.querySelector('[camera]');
+                if (camera) {
+                    // Remove existing controls
+                    if (camera.hasAttribute('look-controls')) {
+                        camera.removeAttribute('look-controls');
+                    }
+                    if (camera.hasAttribute('wasd-controls')) {
+                        camera.removeAttribute('wasd-controls');
+                    }
+                    log('Camera controls disabled');
+                }
+                
+                // Prevent default touch behaviors
+                document.addEventListener('touchmove', function(event) {
+                    event.preventDefault();
+                }, { passive: false });
+                
+                document.addEventListener('touchstart', function(event) {
+                    // Only prevent default for touches that aren't on interactive elements
+                    if (!event.target.classList.contains('clickable')) {
+                        event.preventDefault();
+                    }
+                }, { passive: false });
             },
             
             onSceneLoaded: function() {
@@ -351,13 +381,37 @@
                 const scene = document.querySelector('a-scene');
                 scene.setAttribute('ar-session-manager', '');
                 log('AR session manager attached to scene');
+                
+                // Lock the model in place once it's placed
+                this.lockModelPosition();
+            },
+            
+            lockModelPosition: function() {
+                // This ensures model stays fixed in world space
+                const scene = document.querySelector('a-scene');
+                
+                // Disable any scene-wide controls that might move things
+                if (scene.hasAttribute('look-controls')) {
+                    scene.removeAttribute('look-controls');
+                }
+                if (scene.hasAttribute('wasd-controls')) {
+                    scene.removeAttribute('wasd-controls');
+                }
+                
+                log('Scene controls locked');
             },
             
             tick: function() {
                 // If model has been placed, ensure it stays in the same world position
                 if (window.modelWorldPosition && document.querySelector('#persistentModel').getAttribute('visible')) {
                     const persistentModel = document.querySelector('#persistentModel');
+                    
+                    // Force the model to stay exactly at the stored world position
                     persistentModel.object3D.position.copy(window.modelWorldPosition);
+                    
+                    // Prevent any rotation or movement
+                    persistentModel.object3D.quaternion.set(0, 0, 0, 1);
+                    persistentModel.object3D.updateMatrix();
                 }
             }
         });
