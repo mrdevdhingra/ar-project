@@ -132,13 +132,13 @@
 
     <a-scene
         embedded
-        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; trackingMethod: best; maxDetectionRate: 60;"
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; trackingMethod: best; maxDetectionRate: 60; sourceWidth: 1280; sourceHeight: 960;"
         renderer="antialias: true; alpha: true; precision: mediump; logarithmicDepthBuffer: true;"
         vr-mode-ui="enabled: false">
 
         <!-- Custom marker with pattern -->
         <a-marker type="pattern" url="assets/pattern.patt" emitevents="true" id="marker">
-            <!-- Empty entity to mark the position -->
+            <!-- We'll place the model as a child of the marker for better tracking -->
             <a-entity id="markerPosition"></a-entity>
         </a-marker>
 
@@ -260,11 +260,21 @@
                         
                         log(`Marker position: x=${markerWorldPosition.x.toFixed(2)}, y=${markerWorldPosition.y.toFixed(2)}, z=${markerWorldPosition.z.toFixed(2)}`);
                         
+                        // Create a world position for the model
+                        const worldPosition = new THREE.Vector3(
+                            markerWorldPosition.x + 1,
+                            markerWorldPosition.y,
+                            markerWorldPosition.z
+                        );
+                        
+                        // Store the world position
+                        window.modelWorldPosition = worldPosition;
+                        
                         // Position the model 1 unit to the right of the marker
                         persistentModel.setAttribute('position', {
-                            x: markerWorldPosition.x + 1,
-                            y: markerWorldPosition.y,
-                            z: markerWorldPosition.z
+                            x: worldPosition.x,
+                            y: worldPosition.y,
+                            z: worldPosition.z
                         });
                         
                         // Make the model visible
@@ -329,16 +339,46 @@
             });
         });
         
-        // Fix for AR.js camera issues
+        // Add a tick function to update the model position
+        AFRAME.registerComponent('ar-session-manager', {
+            init: function() {
+                this.el.sceneEl.addEventListener('loaded', this.onSceneLoaded.bind(this));
+                log('AR session manager initialized');
+            },
+            
+            onSceneLoaded: function() {
+                // Add this component to the scene
+                const scene = document.querySelector('a-scene');
+                scene.setAttribute('ar-session-manager', '');
+                log('AR session manager attached to scene');
+            },
+            
+            tick: function() {
+                // If model has been placed, ensure it stays in the same world position
+                if (window.modelWorldPosition && document.querySelector('#persistentModel').getAttribute('visible')) {
+                    const persistentModel = document.querySelector('#persistentModel');
+                    persistentModel.object3D.position.copy(window.modelWorldPosition);
+                }
+            }
+        });
+        
+        // Register the component
+        document.querySelector('a-scene').setAttribute('ar-session-manager', '');
+        
+        // Fix for AR.js camera issues - more aggressive approach
         window.addEventListener('arjs-video-loaded', function() {
             log('AR.js video stream loaded');
             
-            // Force full width/height on video element
+            // Force full width/height on video element with a more aggressive approach
             const video = document.querySelector('#arjs-video');
             if (video) {
-                video.style.width = '100%';
-                video.style.height = '100%';
+                video.style.width = '100vw';
+                video.style.height = '100vh';
                 video.style.objectFit = 'cover';
+                video.style.position = 'absolute';
+                video.style.top = '0';
+                video.style.left = '0';
+                video.style.zIndex = '0';
             }
             
             // Hide loading screen
@@ -359,20 +399,44 @@
         
         // Apply CSS fixes after a short delay to ensure elements are created
         setTimeout(function() {
-            // Force full width/height on video element
+            // Force full width/height on video element with more aggressive styling
             const video = document.querySelector('#arjs-video');
             if (video) {
-                video.style.width = '100%';
-                video.style.height = '100%';
+                video.style.width = '100vw';
+                video.style.height = '100vh';
                 video.style.objectFit = 'cover';
+                video.style.position = 'absolute';
+                video.style.top = '0';
+                video.style.left = '0';
+                video.style.zIndex = '0';
             }
             
-            // Force full width/height on canvas
+            // Force full width/height on canvas with more aggressive styling
             const canvas = document.querySelector('.a-canvas');
             if (canvas) {
-                canvas.style.width = '100%';
-                canvas.style.height = '100%';
+                canvas.style.width = '100vw';
+                canvas.style.height = '100vh';
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.zIndex = '1';
             }
+            
+            // Apply these fixes every second to ensure they stick
+            setInterval(function() {
+                const video = document.querySelector('#arjs-video');
+                if (video) {
+                    video.style.width = '100vw';
+                    video.style.height = '100vh';
+                    video.style.objectFit = 'cover';
+                }
+                
+                const canvas = document.querySelector('.a-canvas');
+                if (canvas) {
+                    canvas.style.width = '100vw';
+                    canvas.style.height = '100vh';
+                }
+            }, 1000);
         }, 1000);
     </script>
 </body>
