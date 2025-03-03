@@ -8,20 +8,57 @@
     <style>
         body {
             margin: 0;
+            padding: 0;
             overflow: hidden;
             position: fixed;
             width: 100%;
             height: 100%;
             -webkit-user-select: none;
             user-select: none;
+            background-color: transparent;
         }
+        
+        .arjs-loader {
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .arjs-loader div {
+            text-align: center;
+            font-size: 1.25em;
+            color: white;
+        }
+        
         .a-canvas {
             width: 100% !important;
             height: 100% !important;
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
+            z-index: 1 !important;
         }
+        
+        #arjs-video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+        }
+        
+        .a-enter-vr {
+            display: none !important;
+        }
+        
         .message-overlay {
             display: none;
             position: fixed;
@@ -35,6 +72,7 @@
             z-index: 1000;
             font-family: Arial, sans-serif;
         }
+        
         #debugPanel {
             position: fixed;
             bottom: 10px;
@@ -50,6 +88,7 @@
             max-height: 30%;
             overflow-y: auto;
         }
+        
         #debugToggle {
             position: fixed;
             bottom: 10px;
@@ -61,13 +100,33 @@
             font-family: sans-serif;
             z-index: 9999;
         }
+        
+        #statusIndicator {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-family: sans-serif;
+            font-size: 14px;
+            z-index: 9999;
+        }
     </style>
 </head>
 <body>
+    <!-- Loading screen -->
+    <div class="arjs-loader">
+        <div>Loading AR Experience, please wait...</div>
+    </div>
+    
     <div id="messageOverlay" class="message-overlay">
         Hello there!
     </div>
     
+    <div id="statusIndicator">Initializing...</div>
     <div id="debugPanel"></div>
     <div id="debugToggle">Toggle Debug</div>
 
@@ -102,12 +161,47 @@
         // Debug logging function
         const debugPanel = document.getElementById('debugPanel');
         const debugToggle = document.getElementById('debugToggle');
+        const statusIndicator = document.getElementById('statusIndicator');
         let debugVisible = true;
+        let lastLogMessage = '';
+        let lastLogCount = 0;
         
         function log(message) {
             console.log(message);
+            
+            // Update status indicator with important messages
+            if (message.includes('Marker found') || 
+                message.includes('Model placed') || 
+                message.includes('Error') ||
+                message.includes('Camera initialized')) {
+                statusIndicator.textContent = message;
+            }
+            
+            // Prevent duplicate consecutive messages
+            if (message === lastLogMessage) {
+                lastLogCount++;
+                // Update the last message with count instead of adding a new one
+                const elements = debugPanel.getElementsByTagName('div');
+                if (elements.length > 0) {
+                    const lastElement = elements[elements.length - 1];
+                    const timestamp = new Date().toLocaleTimeString();
+                    lastElement.innerHTML = `[${timestamp}] ${message} (${lastLogCount}x)`;
+                    return;
+                }
+            } else {
+                lastLogMessage = message;
+                lastLogCount = 1;
+            }
+            
             const timestamp = new Date().toLocaleTimeString();
             debugPanel.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            
+            // Keep only the last 20 messages to prevent performance issues
+            const elements = debugPanel.getElementsByTagName('div');
+            while (elements.length > 20) {
+                debugPanel.removeChild(elements[0]);
+            }
+            
             // Auto-scroll to bottom
             debugPanel.scrollTop = debugPanel.scrollHeight;
         }
@@ -136,6 +230,7 @@
             const markerPosition = document.querySelector('#markerPosition');
             const persistentModel = document.querySelector('#persistentModel');
             const scene = document.querySelector('a-scene');
+            const arjsLoader = document.querySelector('.arjs-loader');
             
             log('DOM fully loaded');
             
@@ -153,6 +248,7 @@
             // When marker is found, position the model next to it
             marker.addEventListener('markerFound', function() {
                 log('Marker found!');
+                statusIndicator.textContent = 'Marker detected';
                 
                 if (!modelPlaced) {
                     log('Positioning model next to marker');
@@ -177,8 +273,10 @@
                         // Mark as placed so it doesn't move again
                         modelPlaced = true;
                         log('Model placed successfully');
+                        statusIndicator.textContent = 'Model placed - you can now explore';
                     } catch (error) {
                         log(`Error placing model: ${error.message}`);
+                        statusIndicator.textContent = 'Error placing model';
                     }
                 }
             });
@@ -190,6 +288,9 @@
             // Add event listener for scene loaded
             scene.addEventListener('loaded', function() {
                 log('A-Frame scene fully loaded');
+                // Hide the loading screen when scene is loaded
+                arjsLoader.style.display = 'none';
+                statusIndicator.textContent = 'Ready - scan marker';
             });
             
             // Add event listener for model loaded
@@ -200,6 +301,7 @@
             // Add event listener for model error
             persistentModel.addEventListener('model-error', function(event) {
                 log(`Error loading model: ${event.detail.message || 'Unknown error'}`);
+                statusIndicator.textContent = 'Error loading 3D model';
             });
             
             // Fix for mobile fullscreen
@@ -210,21 +312,68 @@
             // Fix for iOS
             window.addEventListener('resize', function() {
                 log('Window resized - adjusting canvas');
+                
+                // Force full width/height on resize
+                const canvas = document.querySelector('.a-canvas');
+                if (canvas) {
+                    canvas.style.width = '100%';
+                    canvas.style.height = '100%';
+                }
+                
+                const video = document.querySelector('#arjs-video');
+                if (video) {
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'cover';
+                }
             });
         });
         
         // Fix for AR.js camera issues
         window.addEventListener('arjs-video-loaded', function() {
             log('AR.js video stream loaded');
+            
+            // Force full width/height on video element
+            const video = document.querySelector('#arjs-video');
+            if (video) {
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'cover';
+            }
+            
+            // Hide loading screen
+            document.querySelector('.arjs-loader').style.display = 'none';
+            statusIndicator.textContent = 'Camera ready - scan marker';
         });
         
         window.addEventListener('camera-error', function(event) {
             log(`Camera error: ${event.detail.message || 'Unknown camera error'}`);
+            statusIndicator.textContent = 'Camera error';
+            document.querySelector('.arjs-loader').style.display = 'none';
         });
         
         window.addEventListener('camera-init', function(event) {
             log('Camera initialized');
+            statusIndicator.textContent = 'Camera initialized';
         });
+        
+        // Apply CSS fixes after a short delay to ensure elements are created
+        setTimeout(function() {
+            // Force full width/height on video element
+            const video = document.querySelector('#arjs-video');
+            if (video) {
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'cover';
+            }
+            
+            // Force full width/height on canvas
+            const canvas = document.querySelector('.a-canvas');
+            if (canvas) {
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+            }
+        }, 1000);
     </script>
 </body>
 </html> 
