@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AR Camera Experience</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .message-overlay {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="messageOverlay" class="message-overlay">
+        Hello there!
+    </div>
+
+    <a-scene
+        embedded
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix;"
+        renderer="antialias: true; alpha: true"
+        vr-mode-ui="enabled: false">
+
+        <!-- Custom marker with pattern -->
+        <a-marker type="pattern" url="assets/pattern.patt">
+            <!-- 3D model -->
+            <a-entity
+                position="0 1 0"
+                scale="0.5 0.5 0.5"
+                gltf-model="assets/scene.gltf"
+                class="clickable"
+                animation="property: rotation; to: 0 360 0; dur: 5000; easing: linear; loop: true">
+            </a-entity>
+        </a-marker>
+
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const messageOverlay = document.getElementById('messageOverlay');
+            const model = document.querySelector('.clickable');
+
+            model.addEventListener('click', function() {
+                messageOverlay.style.display = 'block';
+                setTimeout(() => {
+                    messageOverlay.style.display = 'none';
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html> 
